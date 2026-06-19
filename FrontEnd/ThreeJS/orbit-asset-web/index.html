@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Orbit Asset Hub – Browse, customize, and download production-ready 3D assets for OrbitFIDS." />
+    <title>Orbit Asset Hub – 3D Asset Store & Customizer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+
+      <!-- Header -->
+      <header id="app-header" class="app-header">
+        <div class="header-left">
+          <span class="logo-icon">🪐</span>
+          <h1>Orbit Asset Hub</h1>
+          <span class="badge">V1.0</span>
+        </div>
+        <div class="header-center">
+          <div class="search-box">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="asset-search" placeholder="Search 3D assets…" autocomplete="off" />
+          </div>
+        </div>
+        <div class="header-right">
+          <span class="asset-count" id="asset-count">6 assets</span>
+          <div class="layout-switcher" id="layout-selector" aria-label="Asset Layout Selection">
+            <button type="button" class="layout-switcher__button" data-layout-mode="compact" aria-pressed="false" title="Compact Layout">
+              <span class="layout-switcher__icon layout-switcher__icon--compact" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="layout-switcher__button" data-layout-mode="cozy" aria-pressed="true" title="Cozy Layout">
+              <span class="layout-switcher__icon layout-switcher__icon--cozy" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="layout-switcher__button" data-layout-mode="showcase" aria-pressed="false" title="Showcase Layout">
+              <span class="layout-switcher__icon layout-switcher__icon--showcase" aria-hidden="true"></span>
+            </button>
+          </div>
+          <button id="theme-toggle" class="theme-toggle" title="Toggle Day/Night">
+            <svg id="theme-icon-moon" class="theme-icon hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg id="theme-icon-sun" class="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Asset Gallery Grid -->
+      <main id="gallery" class="gallery">
+        <div class="gallery-grid" id="gallery-grid">
+          <!-- Dynamically populated asset cards with 3D thumbnails -->
+        </div>
+      </main>
+
+      <!-- Full Preview Overlay (hidden by default) -->
+      <div id="preview-overlay" class="preview-overlay hidden">
+        <div class="preview-overlay__backdrop"></div>
+        <div class="preview-overlay__content">
+          <button id="preview-close" class="preview-close" title="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <div class="preview-viewport">
+            <canvas id="preview-canvas"></canvas>
+            <div class="preview-hud">
+              <span class="preview-label" id="preview-label">Asset</span>
+              <button id="preview-reset-cam" class="hud-btn" title="Reset Camera">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                Reset
+              </button>
+            </div>
+          </div>
+          <aside class="preview-sidebar">
+            <h2>⚙️ Customize</h2>
+            <form id="customizer-form" class="customizer-form">
+              <div class="control-group">
+                <h3>Materials & Color</h3>
+                <div class="color-row">
+                  <label for="param-color-primary">Primary</label>
+                  <div class="color-chip-wrapper">
+                    <input type="color" id="param-color-primary" value="#8b5cf6" />
+                    <span class="color-hex" id="hex-color-primary">#8B5CF6</span>
+                  </div>
+                </div>
+                <div class="color-row">
+                  <label for="param-color-secondary">Secondary</label>
+                  <div class="color-chip-wrapper">
+                    <input type="color" id="param-color-secondary" value="#334155" />
+                    <span class="color-hex" id="hex-color-secondary">#334155</span>
+                  </div>
+                </div>
+              </div>
+              <div class="control-group" id="group-extra-params">
+                <h3>Asset Details</h3>
+              </div>
+              <div class="control-group hidden" id="group-shape-customizer">
+                <h3>Shape Layout</h3>
+                <button type="button" id="btn-draw-shape" class="download-btn" style="background: var(--bg-surface); border: 1px solid var(--glass-border); color: var(--text-primary); box-shadow: none; font-size: 0.8rem; padding: 10px; margin-top: 5px;">
+                  ✏️ Draw Custom Shape
+                </button>
+              </div>
+            </form>
+            <button id="download-orbit-btn" class="download-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download .orbit
+            </button>
+            <p class="download-hint">Import into OrbitFIDS with resizable dimensions</p>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Shape Draw Modal Overlay (hidden by default) -->
+      <div id="shape-draw-overlay" class="preview-overlay hidden" style="z-index: 1000; align-items: center; justify-content: center;">
+        <div class="preview-overlay__backdrop" id="shape-draw-backdrop"></div>
+        <div class="shape-draw-content">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 id="shape-draw-title" style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Draw Custom Shape</h2>
+            <button id="shape-draw-close" class="hud-btn" style="padding: 4px 10px; border-radius: 6px;" type="button">✕</button>
+          </div>
+          <div id="shape-draw-container" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 320px; width: 100%;">
+             <!-- Will inject svg content here -->
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+            <button id="shape-draw-cancel" class="hud-btn" style="padding: 8px 16px;" type="button">Cancel</button>
+            <button id="shape-draw-confirm" class="download-btn" style="margin-top: 0; padding: 8px 16px; width: auto; font-size: 0.8rem; box-shadow: none;" type="button">Confirm Shape</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
