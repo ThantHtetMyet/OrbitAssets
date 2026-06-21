@@ -1,6 +1,8 @@
 import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
+import { buildOrbitPackage } from './orbitPackage.js'
 
 // ── Import 3D Assets from modular folders ──────
 import { chairAsset } from './3d_assets/chair/chair.js'
@@ -61,6 +63,7 @@ let previewActiveGroup = null
 
 // Array to track card viewports
 let cardViewports = []
+let activeCardViewport = null
 
 // Shared reusable materials for the active preview overlay
 const primaryMaterial = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 })
@@ -105,9 +108,129 @@ const shapeDrawBackdrop = document.querySelector('#shape-draw-backdrop')
 // State to store custom shape points
 let activeShapePoints = null
 let activeDashPolylines = null
+const gltfExporter = new GLTFExporter()
+
+function wrapRenderableAssetNode(node) {
+  if (node?.isObject3D) {
+    return node
+  }
+  const group = new THREE.Group()
+  if (node) {
+    group.add(node)
+  }
+  return group
+}
+
+function cloneRenderableAsset(asset, objectConfig, extrasData) {
+  const primaryMaterial = new THREE.MeshStandardMaterial({
+    color: objectConfig.colorHex || asset.colorPrimary || '#9aa8b8',
+    roughness: 0.5,
+    metalness: 0.1,
+  })
+  const secondaryMaterial = new THREE.MeshStandardMaterial({
+    color: objectConfig.colorSecondaryHex || asset.colorSecondary || objectConfig.colorHex || '#475569',
+    roughness: 0.5,
+    metalness: 0.15,
+  })
+  const built = asset.build(
+    {
+      width: objectConfig.widthM,
+      depth: objectConfig.depthM,
+      height: objectConfig.heightM,
+      extras: extrasData,
+    },
+    primaryMaterial,
+    secondaryMaterial
+  )
+  const root = wrapRenderableAssetNode(built)
+  root.position.set(0, 0, 0)
+  root.rotation.set(0, 0, 0)
+  root.updateMatrixWorld(true)
+  return root
+}
+
+function disposeExportNode(object) {
+  object?.traverse?.((node) => {
+    if (node.geometry) {
+      node.geometry.dispose()
+    }
+    const materials = Array.isArray(node.material)
+      ? node.material
+      : (node.material ? [node.material] : [])
+    for (const material of materials) {
+      if (material?.map) {
+        material.map.dispose?.()
+      }
+      material?.dispose?.()
+    }
+  })
+}
+
+function exportRenderableToGlbBuffer(renderable) {
+  return new Promise((resolve, reject) => {
+    gltfExporter.parse(
+      renderable,
+      (result) => {
+        if (result instanceof ArrayBuffer) {
+          resolve(result)
+          return
+        }
+        reject(new Error('GLB export did not return binary data.'))
+      },
+      (error) => reject(error),
+      { binary: true, onlyVisible: false, maxTextureSize: 2048 }
+    )
+  })
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
+}
+
+async function buildOrbitExportData({ asset, object, extras, resizable, exportMode }) {
+  const renderable = cloneRenderableAsset(asset, object, extras)
+  try {
+    const glbBuffer = await exportRenderableToGlbBuffer(renderable)
+    const packageId = `orbit-${asset.id}-${Date.now()}`
+    return buildOrbitPackage({
+      asset,
+      object,
+      extras,
+      resizable,
+      exportMode,
+      packageId,
+      render: {
+        kind: 'embedded-glb',
+        assetId: asset.id,
+        model: {
+          mimeType: 'model/gltf-binary',
+          encoding: 'base64',
+          data: arrayBufferToBase64(glbBuffer),
+        },
+      },
+      capabilities: {
+        supportsPlacement: true,
+        supportsResize: true,
+        supportsPrimaryColor: false,
+        supportsSecondaryColor: false,
+        supportsShapeEditor: false,
+      },
+    })
+  } finally {
+    disposeExportNode(renderable)
+  }
+}
 
 // ── Clean Up Interactive Card Viewports ────────
 function clearCardViewports() {
+  activeCardViewport = null
   cardViewports.forEach((vp) => {
     if (vp.controls) vp.controls.dispose()
     if (vp.group) {
@@ -120,6 +243,24 @@ function clearCardViewports() {
     if (vp.renderer) vp.renderer.dispose()
   })
   cardViewports = []
+}
+
+function setActiveCardViewport(nextViewport) {
+  activeCardViewport = nextViewport || null
+  cardViewports.forEach((vp) => {
+    const isActive = vp === activeCardViewport
+    if (vp.controls) {
+      vp.controls.enabled = isActive
+      vp.controls.enableRotate = isActive
+      vp.controls.enableZoom = isActive
+      vp.controls.enablePan = false
+    }
+    vp.card?.classList.toggle('asset-card--interactive-active', isActive)
+    vp.card?.classList.toggle('asset-card--interactive-ready', !isActive)
+    if (vp.canvas) {
+      vp.canvas.style.cursor = isActive ? 'grab' : 'pointer'
+    }
+  })
 }
 
 function getSavedLayoutMode() {
@@ -281,17 +422,22 @@ function initCardViewport(canvas, asset) {
   camera.position.set(cameraZ * yawOffset, cameraZ * pitchAngle, cameraZ * rollOffset)
   camera.lookAt(0, size.y / 2, 0)
 
-  // Enable individual OrbitControls for rotation/zooming
+  // Mini cards only become interactive after click so wheel keeps scrolling normally.
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.08
   controls.enablePan = false // Keep the model centered
+  controls.enabled = false
+  controls.enableRotate = false
+  controls.enableZoom = false
   controls.minDistance = cameraZ * 0.4 // Prevent clipping inside model
   controls.maxDistance = cameraZ * 2.5 // Prevent zooming too far out
   controls.target.set(0, size.y / 2, 0)
   controls.update()
 
-  cardViewports.push({
+  const card = canvas.closest('.asset-card')
+  const viewport = {
+    card,
     canvas,
     asset,
     scene,
@@ -301,7 +447,24 @@ function initCardViewport(canvas, asset) {
     group,
     primaryMat,
     secondaryMat,
+  }
+
+  card?.classList.add('asset-card--interactive-ready')
+  canvas.style.cursor = 'pointer'
+  card?.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.card-action-btn')) {
+      return
+    }
+    setActiveCardViewport(viewport)
   })
+  canvas.addEventListener('wheel', (event) => {
+    if (activeCardViewport !== viewport) {
+      return
+    }
+    event.preventDefault()
+  }, { passive: false })
+
+  cardViewports.push(viewport)
 }
 
 // ── Asset Gallery Grid Builder ────────────────
@@ -361,6 +524,7 @@ function buildAssetList() {
     card.innerHTML = `
       <div class="asset-card__thumb">
         <span class="asset-card__tag-badge">${asset.tag}</span>
+        <span class="asset-card__interaction-hint">Click to zoom</span>
         <canvas class="asset-card__canvas" style="width: 100%; height: 100%; display: block;"></canvas>
       </div>
       <div class="asset-card__footer">
@@ -397,9 +561,14 @@ function buildAssetList() {
     })
 
     // Direct download click handler
-    card.querySelector('.card-action-btn--download').addEventListener('click', (e) => {
+    card.querySelector('.card-action-btn--download').addEventListener('click', async (e) => {
       e.stopPropagation()
-      downloadDefaultOrbit(asset)
+      try {
+        await downloadDefaultOrbit(asset)
+      } catch (error) {
+        console.error('Failed to export default .orbit package:', error)
+        window.alert(`Failed to export .orbit package: ${error.message || error}`)
+      }
     })
 
     galleryGrid.appendChild(card)
@@ -426,7 +595,7 @@ function buildAssetList() {
 }
 
 // ── Direct Download Default Orbit ─────────────
-function downloadDefaultOrbit(asset) {
+async function downloadDefaultOrbit(asset) {
   const defaultExtras = {}
   if (asset.extras) {
     asset.extras.forEach((extra) => {
@@ -434,13 +603,8 @@ function downloadDefaultOrbit(asset) {
     })
   }
 
-  const orbitData = {
-    format: 'OrbitAsset',
-    version: '1.0',
-    exportedAt: new Date().toISOString(),
-    assetId: asset.id,
-    name: asset.name,
-    tag: asset.tag,
+  const orbitData = await buildOrbitExportData({
+    asset,
     object: {
       type: asset.id,
       widthM: asset.width,
@@ -456,7 +620,8 @@ function downloadDefaultOrbit(asset) {
       depthM: { min: 0.1, max: 5.0, step: 0.05, default: asset.depth },
       heightM: { min: 0.1, max: 10.0, step: 0.05, default: asset.height },
     },
-  }
+    exportMode: 'default',
+  })
 
   triggerDownload(asset.id, orbitData)
 }
@@ -829,7 +994,7 @@ function renderPreviewAsset() {
 }
 
 // ── Download Customized Payload ──────────────
-function downloadCustomizedOrbit() {
+async function downloadCustomizedOrbit() {
   if (activeAssetIndex === null) return
 
   const asset = ASSETS[activeAssetIndex]
@@ -856,17 +1021,12 @@ function downloadCustomizedOrbit() {
     depthM = Math.max(0.1, Number((maxZ - minZ).toFixed(3)))
   }
 
-  const orbitData = {
-    format: 'OrbitAsset',
-    version: '1.0',
-    exportedAt: new Date().toISOString(),
-    assetId: asset.id,
-    name: asset.name,
-    tag: asset.tag,
+  const orbitData = await buildOrbitExportData({
+    asset,
     object: {
       type: asset.id,
-      widthM: widthM,
-      depthM: depthM,
+      widthM,
+      depthM,
       heightM: asset.height,
       yawDeg: 0,
       colorHex: inputColorPrimary.value,
@@ -878,7 +1038,8 @@ function downloadCustomizedOrbit() {
       depthM: { min: 0.1, max: 15.0, step: 0.05, default: depthM },
       heightM: { min: 0.1, max: 10.0, step: 0.05, default: asset.height },
     },
-  }
+    exportMode: 'customized',
+  })
 
   triggerDownload(asset.id, orbitData)
 }
@@ -940,8 +1101,30 @@ function bindListeners() {
 
   previewCloseBtn.addEventListener('click', closePreviewModal)
   previewResetCamBtn.addEventListener('click', resetPreviewCamera)
-  downloadOrbitBtn.addEventListener('click', downloadCustomizedOrbit)
+  downloadOrbitBtn.addEventListener('click', async () => {
+    try {
+      await downloadCustomizedOrbit()
+    } catch (error) {
+      console.error('Failed to export customized .orbit package:', error)
+      window.alert(`Failed to export .orbit package: ${error.message || error}`)
+    }
+  })
   themeToggleBtn.addEventListener('click', toggleTheme)
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.asset-card')) {
+      return
+    }
+    setActiveCardViewport(null)
+  })
+  document.addEventListener('wheel', (event) => {
+    if (!activeCardViewport?.card) {
+      return
+    }
+    if (event.target.closest('.asset-card') === activeCardViewport.card) {
+      return
+    }
+    setActiveCardViewport(null)
+  }, { passive: true })
   layoutSelector?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-layout-mode]')
     if (!button) {
